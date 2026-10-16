@@ -95,6 +95,14 @@ def get_analysis_log(state: AnalysisState) -> dict[str, Any]:
     return {"steps": state.log}
 
 
+def generate_report(state: AnalysisState, findings: str, title: str | None = None,
+                    author: str | None = None) -> dict[str, Any]:
+    from .report import build_report  # heavy imports (reportlab, matplotlib) only when needed
+
+    info = build_report(state, findings=findings, title=title, author=author)
+    return {**info, "note": "The user can download the PDF from the Reports tab / chat."}
+
+
 # --------------------------------------------------------------------------- #
 # Registry
 # --------------------------------------------------------------------------- #
@@ -177,6 +185,19 @@ TOOLS: list[ToolSpec] = [
         "get_analysis_log",
         "Return every analysis step run so far with its parameters, results and run time.",
         _schema({}), get_analysis_log),
+    ToolSpec(
+        "generate_report",
+        "Write a PDF report of the analysis so far: your narrative of the findings, recording and processing "
+        "details, source-localisation figures (projections, time courses, sensor data, topography), peak "
+        "table, spectra, ground-truth validation (demo only) and the full analysis log. Run the analysis "
+        "steps first; then write `findings` as a complete, well-structured summary (Markdown headings, "
+        "bullets and **bold** are supported) with concrete numbers, method choices and caveats - it is the "
+        "part of the report the reader will actually read.",
+        _schema({
+            "findings": {"type": "string", "description": "Narrative summary of the findings (Markdown)"},
+            "title": {"type": ["string", "null"], "description": "Report title (null = default)"},
+            "author": {"type": ["string", "null"], "description": "Author / lab name to print (null = none)"},
+        }, required=["findings"]), generate_report),
 ]
 
 TOOLS_BY_NAME = {t.name: t for t in TOOLS}

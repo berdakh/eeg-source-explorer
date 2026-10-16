@@ -86,6 +86,7 @@ class AnalysisState:
     viewer_window: tuple[float, float] | None = None
 
     log: list[dict[str, Any]] = field(default_factory=list)
+    reports: list[dict[str, Any]] = field(default_factory=list)  # generated PDF reports
 
     # -- helpers ---------------------------------------------------------- #
     def record(self, step: str, params: dict[str, Any], summary: dict[str, Any], t0: float) -> dict:
@@ -106,6 +107,7 @@ class AnalysisState:
             setattr(self, name, None)
         self.bads_detected = []
         self.log = []
+        self.reports = []
 
     @property
     def has_raw(self) -> bool:
@@ -641,7 +643,13 @@ def compare_to_truth(state: AnalysisState) -> dict[str, Any] | None:
         lo, hi = max(0, t_idx - 5), min(len(state.stc.times), t_idx + 6)
         act = np.abs(state.stc.data[:, lo:hi]).mean(axis=1)
         est = pos[int(np.argmax(act))]
-        out.append({"source": src["name"], "true_position_mm": src["position_mm"],
-                    "estimated_position_mm": np.round(est * 1000, 1).tolist(),
-                    "error_mm": round(float(np.linalg.norm(est - true_pos) * 1000), 1)})
+        entry = {"source": src["name"], "kind": src.get("kind", "evoked"),
+                 "true_position_mm": src["position_mm"],
+                 "estimated_position_mm": np.round(est * 1000, 1).tolist(),
+                 "error_mm": round(float(np.linalg.norm(est - true_pos) * 1000), 1)}
+        if entry["kind"] == "induced" and state.epochs is not None:
+            entry["note"] = ("Induced (non-phase-locked) activity largely cancels in the evoked average, "
+                             "so a large error here is expected; it is recovered by band power / "
+                             "single-trial analyses, not by evoked-response localisation.")
+        out.append(entry)
     return {"method": state.method, "errors": out}

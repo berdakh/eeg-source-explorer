@@ -14,7 +14,8 @@ then explain what it found, with the caveats a careful neuroscientist would add.
 |---|---|
 | **Analysis pipeline** (`eeg_explorer/pipeline.py`) | Loading (FIF, EDF, BDF, EEGLAB, BrainVision, GDF, CNT), band-pass/notch filtering, transparent bad-channel detection + interpolation, average reference, epoching with rejection, head modelling, eLORETA / sLORETA / dSPM / MNE inverse solutions, spatially separated peak finding with region labels, Welch band power. |
 | **Head models** | `sphere` - 3-layer spherical conductor fitted to the electrodes with a 10 mm volume grid. Fully offline, builds in about a second. `fsaverage` - MNE's template cortex with a BEM and Desikan-Killiany labels (downloads ~300 MB on first use). |
-| **AI analyst** (`eeg_explorer/agent.py`, `tools.py`) | An agent that drives the pipeline through nine tools, interprets results and points the 3D viewer at what it is describing. Works with **Claude** (Anthropic API) or any **open-weight model** behind an OpenAI-compatible endpoint (Ollama, vLLM, LM Studio, llama.cpp). |
+| **AI analyst** (`eeg_explorer/agent.py`, `tools.py`) | An agent that drives the pipeline through ten tools, interprets results and points the 3D viewer at what it is describing. Works with **Claude** (Anthropic API) or any **open-weight model** behind an OpenAI-compatible endpoint (Ollama, vLLM, LM Studio, llama.cpp). |
+| **PDF reports** (`eeg_explorer/report.py`) | Ask for a report and the agent writes its findings narrative into a multi-page PDF with recording/processing tables, source projections, time courses, sensor data and topography, spectra, ground-truth validation (demo) and the full analysis log. Also available from the *Reports* tab without an LLM. |
 | **UI** (`app.py`) | Streamlit app: 3D source map with time/window scrubbing, sensor butterfly plot + scalp topography, source time courses, spectrum and band power, a full analysis log, and the chat panel showing every tool call the agent made. Manual controls let you run everything without an LLM. |
 | **Synthetic demo** (`eeg_explorer/data.py`) | A 32-channel visuo-motor task with *known* sources (left sensorimotor evoked response, right occipital alpha burst) and a planted bad channel - so the agent can report true localisation error, which is impossible with real data. |
 
@@ -35,6 +36,7 @@ Click **Generate synthetic demo**, then ask the analyst something like:
 * *Check the data quality and fix any bad channels.*
 * *Which region generates the alpha rhythm?*
 * *Compare eLORETA and dSPM for the peak of the evoked response - and how close is each to the ground truth?*
+* *Run the full analysis and write me a PDF report.*
 
 ### Choosing a model
 
@@ -66,7 +68,7 @@ user question ──▶ LLM ──▶ tool call(s) ──▶ pipeline (MNE) ─�
 
 The tools (`describe_recording`, `preprocess_recording`, `epoch_recording`,
 `localize_sources`, `find_peak_sources`, `compute_band_power`, `set_viewer`,
-`compare_with_ground_truth`, `get_analysis_log`) are plain Python functions
+`compare_with_ground_truth`, `get_analysis_log`, `generate_report`) are plain Python functions
 with JSON schemas. Both backends run the same loop: send the conversation
 plus tool definitions, execute whatever the model asks for, feed the results
 back, repeat. Every call and its result is shown in the chat, so the analysis
@@ -88,7 +90,7 @@ the evoked motor source is recovered within ~20 mm by eLORETA/sLORETA and
 ## Development
 
 ```bash
-pytest -q          # 18 tests; no network or API keys needed (LLM clients are faked)
+pytest -q          # 23 tests; no network or API keys needed (LLM clients are faked)
 ```
 
 ```
@@ -99,7 +101,8 @@ eeg-source-explorer/
 │   ├── data.py            file loading, synthetic demo
 │   ├── tools.py           tool registry shared by all LLM backends
 │   ├── agent.py           Anthropic + OpenAI-compatible agent loops
-│   └── viz.py             Plotly / matplotlib figures
+│   ├── viz.py             Plotly / matplotlib figures
+│   └── report.py          PDF report builder (ReportLab)
 └── tests/
 ```
 
@@ -110,8 +113,11 @@ eeg-source-explorer/
   head models are not supported.
 * Source estimates are distributed minimum-norm solutions; they show the most
   likely *region* of activity, not discrete dipoles.
-* Ideas: beamformers (LCMV/DICS), time-frequency source imaging, exporting a
-  PDF report written by the agent, batch analysis across subjects.
+* The occipital alpha burst in the demo is *induced* (random phase), so it
+  cancels in the evoked average - evoked-response localisation is not expected
+  to recover it; band power does. The ground-truth table says so.
+* Ideas: beamformers (LCMV/DICS), time-frequency source imaging, batch
+  analysis across subjects.
 
 ## Acknowledgements
 

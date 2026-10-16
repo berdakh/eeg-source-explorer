@@ -177,9 +177,9 @@ def make_demo_recording(state: AnalysisState, n_trials: int = 40, sfreq: float =
         "bad_channels": ["T8"],
         "sources": [
             {"name": "left sensorimotor (evoked)", "position_mm": np.round(rr[motor] * 1000, 1).tolist(),
-             "peak_time_s": 0.30, "source_index": motor},
+             "peak_time_s": 0.30, "source_index": motor, "kind": "evoked"},
             {"name": "right occipital (10 Hz burst)", "position_mm": np.round(rr[occipital] * 1000, 1).tolist(),
-             "peak_time_s": 0.75, "source_index": occipital},
+             "peak_time_s": 0.75, "source_index": occipital, "kind": "induced"},
         ],
     }
     return {"source": state.source_name, "n_channels": len(DEMO_CHANNELS), "sfreq_hz": sfreq,

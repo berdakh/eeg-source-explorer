@@ -32,6 +32,7 @@ SUGGESTIONS = [
     "Check the data quality and fix any bad channels.",
     "Which region generates the alpha rhythm in this recording?",
     "Compare eLORETA and dSPM for the peak of the evoked response.",
+    "Run the full analysis and write me a PDF report.",
 ]
 
 
@@ -189,8 +190,10 @@ def viewer_panel(state: AnalysisState) -> None:
         fig, marker = viz.source_map_figure(state), None
     st.plotly_chart(fig, use_container_width=True, config={"displaylogo": False})
 
-    tabs = st.tabs(["Sensors", "Source time courses", "Spectrum", "Analysis log"]
-                   + (["Ground truth"] if state.truth else []))
+    tab_names = ["Sensors", "Source time courses", "Spectrum", "Analysis log", "Reports"]
+    if state.truth:
+        tab_names.append("Ground truth")
+    tabs = st.tabs(tab_names)
     with tabs[0]:
         if state.evoked is not None:
             c1, c2 = st.columns([3, 1])
@@ -223,13 +226,43 @@ def viewer_panel(state: AnalysisState) -> None:
                     st.json({"params": entry["params"], "summary": entry["summary"]})
         else:
             st.info("Nothing run yet.")
+    with tabs[4]:
+        reports_tab(state)
     if state.truth:
-        with tabs[4]:
+        with tabs[5]:
             st.markdown(state.truth["description"])
             st.json({"sources": state.truth["sources"], "bad_channels": state.truth["bad_channels"]})
             cmp = pl.compare_to_truth(state)
             if cmp:
                 st.dataframe(cmp["errors"], use_container_width=True, hide_index=True)
+
+
+def download_report_button(info: dict, key: str) -> None:
+    try:
+        data = open(info["path"], "rb").read()
+    except OSError:
+        st.caption(f"{info['filename']} is no longer available (session restarted).")
+        return
+    st.download_button(f"⬇️ {info['filename']}  ({info['pages']} pages, {info['size_kb']} kB)", data,
+                       file_name=info["filename"], mime="application/pdf", key=key,
+                       use_container_width=True)
+
+
+def reports_tab(state: AnalysisState) -> None:
+    st.caption("Ask the analyst for a report, or build one from the analyses run so far.")
+    if st.button("Generate PDF report now", disabled=not state.has_raw, use_container_width=True):
+        from eeg_explorer.report import build_report
+        findings = ("Report generated from the manual controls without an analyst narrative. "
+                    "See the quantitative sections below.")
+        with st.spinner("Rendering figures and writing PDF..."):
+            build_report(state, findings=findings)
+        st.rerun()
+    for i, info in enumerate(reversed(state.reports)):
+        st.markdown(f"**{info['title']}**  \n<small>{info['created'].replace('T', ' ')}</small>",
+                    unsafe_allow_html=True)
+        download_report_button(info, key=f"rep-{len(state.reports) - i}")
+    if not state.reports:
+        st.info("No reports yet.")
 
 
 def render_message(msg: dict) -> None:
@@ -247,6 +280,8 @@ def render_message(msg: dict) -> None:
                     st.code(ev["result"])
         if msg.get("content"):
             st.markdown(msg["content"])
+        for k, info in enumerate(msg.get("reports") or []):
+            download_report_button(info, key=f"msg-{id(msg)}-{k}")
         if msg.get("usage"):
             u = msg["usage"]
             st.caption(f"{u.get('input_tokens', 0):,} in · {u.get('output_tokens', 0):,} out tokens")
@@ -284,8 +319,13 @@ def chat_panel(state: AnalysisState, cfg: dict) -> None:
             agent.on_event = on_event
             turn = agent.chat(prompt)
             status.update(label=f"Done - {len(turn.events)} tool call(s)", state="complete", expanded=False)
+            new_reports = []
+            for e in turn.events:
+                if e.name == "generate_report" and not e.is_error:
+                    info = json.loads(e.result)
+                    new_reports.append({k: info[k] for k in ("path", "filename", "pages", "size_kb", "title", "created")})
             ss.chat.append({"role": "assistant", "content": turn.text, "thinking": turn.thinking,
-                            "usage": turn.usage,
+                            "usage": turn.usage, "reports": new_reports,
                             "events": [{"name": e.name, "arguments": e.arguments, "result": e.result,
                                         "is_error": e.is_error} for e in turn.events]})
         except Exception as exc:
